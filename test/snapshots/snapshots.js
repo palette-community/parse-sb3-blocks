@@ -18,7 +18,13 @@ fs.readdirSync(fixturesDir)
         const snapshots = snapshotFile.split('\n\n');
         if (scripts.length !== snapshots.length) throw new Error(`Test case number mismatch for ${filename}: ${scripts.length} / ${snapshots.length}`);
         for (let i = 0; i < snapshots.length; i++) {
-            const scratchblocks = toScratchblocks(scripts[i], config.blocks, config.locale, config.opts);
+            const scratchblocks = toScratchblocks(
+                scripts[i],
+                config.blocks,
+                config.locale,
+                config.opts,
+                config.comments
+            );
             if (scratchblocks === snapshots[i].trim()) {
                 t.pass(scripts[i]);
             } else {

@@ -343,16 +343,16 @@ class Parser {
         block.comment = comment;
         if (options.category) block._options = options;
         this.pos++;
-        if (cand.type === C_BLOCK) this.consumeSubstack(block, 'SUBSTACK', baseIndent, false);
+        if (cand.type === C_BLOCK) this.consumeSubstack(block, 'SUBSTACK', baseIndent);
         else if (cand.type === E_BLOCK) {
-            this.consumeSubstack(block, 'SUBSTACK', baseIndent, false);
-            this.expectLine('else', baseIndent);
-            this.consumeSubstack(block, 'SUBSTACK2', baseIndent, false);
+            this.consumeSubstack(block, 'SUBSTACK', baseIndent);
+            this.expectLine('else');
+            this.consumeSubstack(block, 'SUBSTACK2', baseIndent);
         }
         return block;
     }
 
-    expectLine(text, baseIndent) {
+    expectLine(text) {
         const line = this.lines[this.pos];
         if (line && line.trim() === text) {
             this.pos++;
@@ -361,7 +361,7 @@ class Parser {
         return false;
     }
 
-    consumeSubstack(block, key, baseIndent, required) {
+    consumeSubstack(block, key, baseIndent) {
         const blocks = [];
         while (this.pos < this.lines.length) {
             const rawLine = this.lines[this.pos];

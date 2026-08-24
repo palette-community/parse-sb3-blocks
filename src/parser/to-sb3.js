@@ -2,8 +2,6 @@ import Definition from '../block-type/definition.js';
 import ProcedureCall from '../block-type/procedure-call.js';
 import ReporterBlock from '../block-type/reporter-block.js';
 import BooleanBlock from '../block-type/boolean-block.js';
-import CBlock from '../block-type/c-block.js';
-import EBlock from '../block-type/e-block.js';
 import Variable from '../block-type/variable.js';
 import Menu from '../input/menu.js';
 import {
@@ -69,7 +67,7 @@ const unescape = s => {
     return out;
 };
 
-const toSB3 = (scripts, opts) => {
+const toSB3 = scripts => {
     const blocks = {};
     const comments = {};
     let idc = 0;
@@ -277,11 +275,9 @@ const toSB3 = (scripts, opts) => {
     const scriptStarts = [];
     scripts.forEach(script => {
         let prev = null;
-        let firstId = null;
         script.forEach(conn => {
             const id = serializeConnectable(conn, prev === null);
             if (prev === null) {
-                firstId = id;
                 scriptStarts.push(id);
             }
             if (prev !== null) {
