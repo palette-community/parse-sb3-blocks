@@ -2,6 +2,8 @@
 
 **parse-sb3-blocks** parses Scratch 3.0 block formats, and convert it to [scratchblocks](https://github.com/scratchblocks/scratchblocks) format.
 
+English | **[中文](README.zh-CN.md)**
+
 > **Fork by palette-community developers.** This repository is a maintained fork of apple502j/parse-sb3-blocks. Our fork extends it with a **bidirectional parser**: in addition to the original SB3-JSON → scratchblocks direction, it can parse scratchblocks text back into the SB3 block graph, enabling lossless structural round trips. It is used as the parser for the [palette-community/scratch-toolchain](https://github.com/palette-community/scratch-toolchain).
 
 ## Usage
