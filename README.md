@@ -23,12 +23,36 @@ console.log(toScratchblocks('ND,(]G?KLIy(IZrd2sl.', sb3blocks, 'en', {tabs: ' '.
 - blocks: serialized SB3 format (project.json format) of blocks.
 - locale: Locale to use. `en` should always be available.
 - opts: Optional. It can be an object (see below)
+- comments: Optional. The target's `comments` map (keyed by comment ID). When provided, block comments are rendered as `// comment` trailing annotations.
 
 #### Options
 `opts` can have these properties.
 
 - tabs: Tab characters used by C/E blocks for indenting. **Note that while parse-sb3-blocks can use non-space/tab indent, scratchblocks only accepts tab or spaces.** Pass empty string to remove indents. Defaults to four spaces.
 - variableStyle: If set to `none` (default), variables will never have `::variables` at the end. If set to `always`, it will always have `::variables`. If set to `as-needed`, it will have `::variables` if block name conflicts.
+
+### Bidirectional conversion
+The library supports a lossless round trip between the SB3 block graph and the scratchblocks text format.
+
+#### parseScratchblocks
+**parseScratchblocks** parses scratchblocks text back into the internal block model. It accepts the text and an optional `opts` object (`locale` and `tab`). It returns an array of scripts, where each script is an array of `Connectable` instances. Comments written as `// comment` are attached to the following block.
+
+```js
+import { parseScratchblocks } from 'parse-sb3-blocks';
+
+const scripts = parseScratchblocks('when @greenFlag clicked\nmove (10) steps', { locale: 'en' });
+```
+
+#### toSB3
+**toSB3** serializes the internal model (the same shape returned by `parseScratchblocks`) back into an SB3 block dictionary. It returns `{ blocks, comments, scriptStarts }`. Block and variable IDs are regenerated, and `comments` is a map keyed by comment ID (suitable for merging into a target's `comments`).
+
+```js
+import { toSB3 } from 'parse-sb3-blocks';
+
+const { blocks, comments, scriptStarts } = toSB3(scripts);
+```
+
+Round trip: `SB3 -> toScratchblocks -> parseScratchblocks -> toSB3 -> toScratchblocks` reproduces the original text, and `text -> parseScratchblocks -> toSB3 -> toScratchblocks` is stable. Block-level metadata such as coordinates, shadow flags, and the stage-level variables/lists/broadcasts registries are regenerated and not preserved (this is structural, not byte-level, losslessness).
 
 ### Internal Functions and Parsers
 It also exports several classes used internally by the parsers. These are not APIs and is subject to changes at any time.
