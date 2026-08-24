@@ -3,6 +3,7 @@ import ProcedureCall from '../block-type/procedure-call.js';
 import ReporterBlock from '../block-type/reporter-block.js';
 import BooleanBlock from '../block-type/boolean-block.js';
 import Variable from '../block-type/variable.js';
+import allBlocks from '../block-mapping/all-blocks.js';
 import Menu from '../input/menu.js';
 import {
     NumberInput,
@@ -67,6 +68,21 @@ const unescape = s => {
     return out;
 };
 
+// Resolve the opcode of the shadow menu block referenced by an input.
+// Most menus use the `<parentOpcode>_menu` convention, with a few known exceptions.
+const menuOpcodeFor = (opcode, key) => {
+    if (opcode === 'event_whenbroadcastreceived' || opcode.startsWith('event_broadcast')) {
+        return 'event_broadcast_menu';
+    }
+    if (opcode === 'sensing_of' && key === 'OBJECT') {
+        return 'sensing_of_object_menu';
+    }
+    if (opcode === 'sensing_of' && key === 'PROPERTY') {
+        return 'sensing_of_property_menu';
+    }
+    return `${opcode}_menu`;
+};
+
 const toSB3 = scripts => {
     const blocks = {};
     const comments = {};
@@ -117,13 +133,16 @@ const toSB3 = scripts => {
         if (it instanceof Menu) {
             if (it.isSpecial) return null; // emitted as a field instead
             const mId = genId();
+            const remap =
+                allBlocks[parentOpcode] && allBlocks[parentOpcode].remap && allBlocks[parentOpcode].remap[key];
+            const fieldKey = remap || key;
             reg({
                 id: mId,
-                opcode: `${parentOpcode}_menu`,
+                opcode: menuOpcodeFor(parentOpcode, key),
                 next: null,
                 parent: parentId,
                 inputs: {},
-                fields: { [key]: [it.content, null] },
+                fields: { [fieldKey]: [it.content, null] },
                 shadow: true,
                 topLevel: false,
             });

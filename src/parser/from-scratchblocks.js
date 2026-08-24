@@ -201,7 +201,7 @@ class Parser {
         const inner = raw.slice(1, -1);
         if (token.kind === 'menu') {
             // [value v] -> menu; [value] -> string/color input
-            const m = /^([\s\S]*?)\s+v\]$/.exec(inner);
+            const m = /^([\s\S]*?)\s+v$/.exec(inner);
             if (m) return new Menu(null, null, unescape(m[1]));
             if (COLOR_RE.test(inner)) return new ColorPickerInput(unescape(inner));
             return new StringInput(unescape(inner));
@@ -326,8 +326,22 @@ class Parser {
         }
         const matched = this.matchStatement(tokens);
         if (!matched) {
-            // Unknown statement: skip line to avoid corrupting the model.
+            // Unknown statement: warn and skip its whole subtree (mirrors parseScript,
+            // which drops the unknown block and everything parented to it).
+            console.warn('Unknown scratchblocks statement:', line);
             this.pos++;
+            while (this.pos < this.lines.length) {
+                const l = this.lines[this.pos];
+                if (l.trim() === '') {
+                    this.pos++;
+                    continue;
+                }
+                if (this.indentOf(l) > baseIndent) {
+                    this.pos++;
+                    continue;
+                }
+                break;
+            }
             return null;
         }
         const { cand, map } = matched;
@@ -343,11 +357,14 @@ class Parser {
         block.comment = comment;
         if (options.category) block._options = options;
         this.pos++;
-        if (cand.type === C_BLOCK) this.consumeSubstack(block, 'SUBSTACK', baseIndent);
-        else if (cand.type === E_BLOCK) {
+        if (cand.type === C_BLOCK) {
+            this.consumeSubstack(block, 'SUBSTACK', baseIndent);
+            this.expectLine('end');
+        } else if (cand.type === E_BLOCK) {
             this.consumeSubstack(block, 'SUBSTACK', baseIndent);
             this.expectLine('else');
             this.consumeSubstack(block, 'SUBSTACK2', baseIndent);
+            this.expectLine('end');
         }
         return block;
     }
