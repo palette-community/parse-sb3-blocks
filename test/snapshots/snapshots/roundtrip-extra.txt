@@ -1,0 +1,11 @@
+when @greenFlag clicked // kick things off
+forever
+    if (mouse x) then
+        say [a]
+    else
+        say [b]
+    end
+end
+
+define greet (who)
+greet [Scratch]::custom

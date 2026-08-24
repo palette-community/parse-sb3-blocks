@@ -1,0 +1,188 @@
+{
+    "scriptStart": ["hat", "def"],
+    "locale": "en",
+    "opts": {
+        "tab": "    "
+    },
+    "comments": {
+        "c0": {
+            "blockId": "hat",
+            "text": "kick things off",
+            "x": 0,
+            "y": 0,
+            "width": 160,
+            "height": 80,
+            "minimized": false
+        }
+    },
+    "blocks": {
+        "hat": {
+            "opcode": "event_whenflagclicked",
+            "next": "loop",
+            "parent": null,
+            "inputs": {},
+            "fields": {},
+            "shadow": false,
+            "topLevel": true,
+            "x": 20,
+            "y": 20,
+            "comment": "c0"
+        },
+        "loop": {
+            "opcode": "control_forever",
+            "next": null,
+            "parent": "hat",
+            "inputs": {
+                "SUBSTACK": [
+                    2,
+                    "branch"
+                ]
+            },
+            "fields": {},
+            "shadow": false,
+            "topLevel": false
+        },
+        "branch": {
+            "opcode": "control_if_else",
+            "next": null,
+            "parent": "loop",
+            "inputs": {
+                "CONDITION": [
+                    2,
+                    "cond"
+                ],
+                "SUBSTACK": [
+                    2,
+                    "yes"
+                ],
+                "SUBSTACK2": [
+                    2,
+                    "no"
+                ]
+            },
+            "fields": {},
+            "shadow": false,
+            "topLevel": false
+        },
+        "cond": {
+            "opcode": "sensing_mousex",
+            "next": null,
+            "parent": "branch",
+            "inputs": {},
+            "fields": {},
+            "shadow": false,
+            "topLevel": false
+        },
+        "yes": {
+            "opcode": "looks_say",
+            "next": null,
+            "parent": "branch",
+            "inputs": {
+                "MESSAGE": [
+                    1,
+                    [
+                        10,
+                        "a"
+                    ]
+                ]
+            },
+            "fields": {},
+            "shadow": false,
+            "topLevel": false
+        },
+        "no": {
+            "opcode": "looks_say",
+            "next": null,
+            "parent": "branch",
+            "inputs": {
+                "MESSAGE": [
+                    1,
+                    [
+                        10,
+                        "b"
+                    ]
+                ]
+            },
+            "fields": {},
+            "shadow": false,
+            "topLevel": false
+        },
+        "def": {
+            "opcode": "procedures_definition",
+            "next": "call",
+            "parent": null,
+            "inputs": {
+                "custom_block": [
+                    1,
+                    "proto"
+                ]
+            },
+            "fields": {},
+            "shadow": false,
+            "topLevel": true,
+            "x": 20,
+            "y": 200
+        },
+        "proto": {
+            "opcode": "procedures_definition",
+            "next": null,
+            "parent": "def",
+            "inputs": {
+                "a0": [
+                    1,
+                    "arg0"
+                ]
+            },
+            "fields": {},
+            "shadow": false,
+            "topLevel": false,
+            "mutation": {
+                "tag": "procedures_definition",
+                "proccode": "greet %s",
+                "argumentids": "[\"a0\"]",
+                "argumentnames": "[\"who\"]",
+                "argumentdefaults": "[\"\"]",
+                "warp": false
+            }
+        },
+        "arg0": {
+            "opcode": "argument_reporter_string_number",
+            "next": null,
+            "parent": "proto",
+            "inputs": {},
+            "fields": {
+                "VALUE": [
+                    "who",
+                    null
+                ]
+            },
+            "shadow": false,
+            "topLevel": false
+        },
+        "call": {
+            "opcode": "procedures_call",
+            "next": null,
+            "parent": "def",
+            "inputs": {
+                "b0": [
+                    1,
+                    [
+                        10,
+                        "Scratch"
+                    ]
+                ]
+            },
+            "fields": {},
+            "shadow": false,
+            "topLevel": false,
+            "mutation": {
+                "tag": "procedures_call",
+                "proccode": "greet %s",
+                "argumentids": "[\"b0\"]",
+                "argumentnames": "[]",
+                "argumentdefaults": "[]",
+                "warp": false
+            }
+        }
+    }
+}
