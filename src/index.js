@@ -1,5 +1,7 @@
 import parseScript from './parser/parse.js';
 import toScratchblocks from './parser/to-scratchblocks.js';
+import parseScratchblocks from './parser/from-scratchblocks.js';
+import toSB3 from './parser/to-sb3.js';
 
 import Block from './block-type/block.js';
 import BooleanBlock from './block-type/boolean-block.js';
@@ -33,6 +35,8 @@ import {
 
 export {
     toScratchblocks,
+    parseScratchblocks,
+    toSB3,
     parseScript,
     Block,
     BooleanBlock,
