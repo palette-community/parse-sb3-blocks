@@ -228,7 +228,7 @@ const getProcCallArgs = (block, blocks) => {
     return argObjs;
 };
 
-const parseScript = (scriptStart, blocks) => {
+const parseScript = (scriptStart, blocks, comments) => {
     let blockId = scriptStart;
     const parsedBlocks = [];
     do {
@@ -275,6 +275,9 @@ const parseScript = (scriptStart, blocks) => {
                     );
                     break;
             }
+        }
+        if (comments && block.comment && comments[block.comment]) {
+            parsedBlock.comment = comments[block.comment].text;
         }
         parsedBlocks.push(parsedBlock);
         blockId = block.next;
