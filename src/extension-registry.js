@@ -8,6 +8,14 @@ import {
 } from './block-mapping/block-enum.js';
 import { parseExtension } from 'scratch-sandbox';
 
+// extensionId -> source URL, populated when an extension is registered with a
+// known URL. Used to re-emit a project's `extensions` array on serialization so
+// a generated SB3 can be re-parsed (and its extensions auto-loaded) later.
+const extensionUrls = Object.create(null);
+// URLs already fetched+registered this session, so a repeated project load
+// (e.g. both halves of a round-trip) doesn't re-register and spam warnings.
+const loadedExtensionUrls = new Set();
+
 // Argument types that surface as a (static or dynamic) menu dropdown.
 const MENU_ARG_TYPES = new Set([
     'broadcast',
@@ -58,8 +66,10 @@ const mapBlockType = bt => {
 };
 
 // Turn a raw `getInfo()` descriptor into a serializable extension meta object.
-export const compileExtensionInfo = info => {
+// `opts.url` records the source URL so the reverse path can re-emit it.
+export const compileExtensionInfo = (info, opts = {}) => {
     const id = info.id;
+    const url = opts.url || null;
     const blocks = [];
     for (const b of info.blocks || []) {
         if (b.blockType === 'label' || b.blockType === 'button') continue;
@@ -77,6 +87,7 @@ export const compileExtensionInfo = info => {
         const type = mapBlockType(b.blockType);
         const block = {
             opcode: b.opcode,
+            extensionId: id,
             type,
             template,
             args,
@@ -87,6 +98,7 @@ export const compileExtensionInfo = info => {
     return {
         id,
         name: info.name,
+        url,
         color1: info.color1 || null,
         menus: info.menus || {},
         blocks,
@@ -96,6 +108,7 @@ export const compileExtensionInfo = info => {
 // Register a compiled meta into the global allBlocks / allMenus tables so both
 // the forward (SB3 -> text) and reverse (text -> SB3) parsers pick it up.
 export const registerExtensionMeta = meta => {
+    if (meta.url) extensionUrls[meta.id] = meta.url;
     for (const b of meta.blocks) {
         if (Object.prototype.hasOwnProperty.call(allBlocks, b.opcode)) {
             console.warn(`registerExtension: opcode already defined, skipping ${b.opcode}`);
@@ -104,6 +117,7 @@ export const registerExtensionMeta = meta => {
         allBlocks[b.opcode] = {
             defaultMessage: b.template,
             type: b.type,
+            extensionId: meta.id,
             defaultOptions: { category: meta.id },
         };
         for (const a of b.args) {
@@ -125,8 +139,9 @@ export const registerExtensionMeta = meta => {
 };
 
 // Compile + register directly from a raw getInfo() descriptor.
-export const registerExtensionInfo = info => {
-    registerExtensionMeta(compileExtensionInfo(info));
+// `opts.url` records the source URL for later re-emission.
+export const registerExtensionInfo = (info, opts = {}) => {
+    registerExtensionMeta(compileExtensionInfo(info, opts));
 };
 
 // Register several descriptors at once.
@@ -144,8 +159,58 @@ export const registerExtensionFromSource = async (source, opts = {}) => {
                 JSON.stringify(result.errors)
         );
     }
-    registerExtensionInfo(result.info);
+    registerExtensionInfo(result.info, { url: opts.url });
     return result;
+};
+
+// Fetch an extension JS source by URL and register it.
+// `opts.fetch` supplies a fetch implementation (handy for tests/offline caches);
+// otherwise the global fetch is used when available.
+export const registerExtensionFromUrl = async (url, opts = {}) => {
+    if (loadedExtensionUrls.has(url)) return null;
+    const fetchImpl = opts.fetch || (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null);
+    if (!fetchImpl) {
+        throw new Error('registerExtensionFromUrl: no fetch implementation available (pass opts.fetch)');
+    }
+    const res = await fetchImpl(url);
+    if (!res.ok) {
+        throw new Error(`Failed to fetch extension ${url}: ${res.status} ${res.statusText}`);
+    }
+    const source = await res.text();
+    const result = await registerExtensionFromSource(source, { url, fetch: fetchImpl, ...opts });
+    loadedExtensionUrls.add(url);
+    return result;
+};
+
+// Auto-load every extension referenced by a project's top-level `extensions`
+// array (URLs). A failure is warned and skipped so a missing/failed extension
+// does not abort conversion of the rest of the project.
+export const registerExtensionsFromProject = async (project, opts = {}) => {
+    const urls = (project && Array.isArray(project.extensions)) ? project.extensions : [];
+    for (const url of urls) {
+        try {
+            await registerExtensionFromUrl(url, opts);
+        } catch (e) {
+            console.warn(`Could not load extension ${url}: ${e.message}`);
+        }
+    }
+};
+
+// Collect the source URLs for the extensions used by the given block opcodes,
+// for re-emitting a project's `extensions` array on serialization.
+export const projectExtensionsForOpcodes = opcodes => {
+    const urls = [];
+    const seen = new Set();
+    for (const op of opcodes) {
+        const info = allBlocks[op];
+        const id = info && info.extensionId;
+        const url = id && extensionUrls[id];
+        if (url && !seen.has(url)) {
+            seen.add(url);
+            urls.push(url);
+        }
+    }
+    return urls;
 };
 
 // Register all extensions bundled under ./extensions (generated by the

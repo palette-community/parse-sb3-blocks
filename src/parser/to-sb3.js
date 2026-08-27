@@ -13,6 +13,7 @@ import {
 } from '../input/input.js';
 import Stack from '../input/stack.js';
 import Icon from '../input/icon.js';
+import { projectExtensionsForOpcodes } from '../extension-registry.js';
 
 const matching = (str, start, open, close) => {
     let depth = 0;
@@ -307,7 +308,8 @@ const toSB3 = scripts => {
         });
     });
 
-    return { blocks, comments, scriptStarts };
+    const extensions = projectExtensionsForOpcodes(Object.keys(blocks).map(id => blocks[id].opcode));
+    return { blocks, comments, scriptStarts, extensions };
 };
 
 export default toSB3;

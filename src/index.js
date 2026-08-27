@@ -38,8 +38,33 @@ import {
     registerExtensionInfo,
     registerExtensions,
     registerExtensionFromSource,
+    registerExtensionFromUrl,
+    registerExtensionsFromProject,
     registerBundledExtensions,
 } from './extension-registry.js';
+
+// Convert a full SB3 project object to scratchblocks text. Extensions listed in
+// the project's top-level `extensions` array are fetched and registered
+// automatically (via scratch-sandbox), so no manual extraction step is needed.
+// `opts` is forwarded to the extension loader (e.g. `opts.fetch` for offline
+// caches) and to the renderer. Returns the concatenated text for all targets.
+export const toScratchblocksProject = async (project, opts = {}) => {
+    await registerExtensionsFromProject(project, opts);
+    const locale = opts.locale || 'en';
+    const renderOpts = { tab: '    ', ...opts };
+    const targetTexts = [];
+    for (const target of project.targets || []) {
+        const blocks = target.blocks || {};
+        const comments = target.comments || {};
+        const top = Object.keys(blocks).filter(id => blocks[id] && blocks[id].topLevel);
+        let text = '';
+        for (const id of top) {
+            text += toScratchblocks(id, blocks, locale, renderOpts, comments) + '\n\n';
+        }
+        targetTexts.push(text.trim());
+    }
+    return targetTexts.filter(Boolean).join('\n\n');
+};
 
 export {
     toScratchblocks,
@@ -75,5 +100,7 @@ export {
     registerExtensionInfo,
     registerExtensions,
     registerExtensionFromSource,
+    registerExtensionFromUrl,
+    registerExtensionsFromProject,
     registerBundledExtensions,
 };
