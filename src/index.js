@@ -40,6 +40,7 @@ import {
     registerExtensionFromSource,
     registerExtensionFromUrl,
     registerExtensionsFromProject,
+    registerBuiltinExtensions,
     registerBundledExtensions,
 } from './extension-registry.js';
 
@@ -87,10 +88,12 @@ export const projectToSnippets = async (project, opts = {}) => {
             const block = blocks[id];
             const opcode = block.opcode;
             const text = toScratchblocks(id, blocks, locale, renderOpts, comments);
+            if (!text || !text.trim()) continue; // unknown opcode: skip, don't emit empty
             const info = allBlocks[opcode] || {};
             const isHat = opcode.startsWith('event_') || info.isHat;
             const isReporter = info.type === REPORTER_BLOCK || info.type === BOOLEAN_BLOCK;
-            const isOrphan = isReporter || ((block.next === null || block.next === undefined) && !isHat);
+            const isControl = info.type === C_BLOCK || info.type === E_BLOCK;
+            const isOrphan = isReporter || (!isHat && !isControl && (block.next === null || block.next === undefined));
             if (isOrphan) {
                 orphans.push(text);
             } else {
@@ -139,5 +142,6 @@ export {
     registerExtensionFromSource,
     registerExtensionFromUrl,
     registerExtensionsFromProject,
+    registerBuiltinExtensions,
     registerBundledExtensions,
 };

@@ -184,16 +184,36 @@ export const registerExtensionFromUrl = async (url, opts = {}) => {
     return result;
 };
 
+// Register TurboWarp "core" extensions (control_while, etc.) that are injected
+// by TurboWarp and may not appear in a project's `extensions` array, so they
+// cannot be auto-fetched. Idempotent: only runs once per process.
+let builtinsRegistered = false;
+export const registerBuiltinExtensions = async () => {
+    if (builtinsRegistered) return;
+    try {
+        const mod = await import('./extensions/turbowarp-core.js');
+        const infos = mod.default || [];
+        for (const info of infos) registerExtensionInfo(info);
+    } finally {
+        builtinsRegistered = true;
+    }
+};
+
 // Auto-load every extension referenced by a project's top-level `extensions`
-// array (URLs). A failure is warned and skipped so a missing/failed extension
-// does not abort conversion of the rest of the project.
+// array. Entries that are http(s) URLs are fetched and registered; bare IDs
+// (e.g. "pen", "music") are built-in/core extensions resolved from the bundled
+// block metadata (all-blocks.js / registerBuiltinExtensions) and must NOT be
+// treated as URLs. A fetch failure is warned and skipped so a missing/failed
+// extension does not abort conversion of the rest of the project.
 export const registerExtensionsFromProject = async (project, opts = {}) => {
-    const urls = (project && Array.isArray(project.extensions)) ? project.extensions : [];
-    for (const url of urls) {
+    await registerBuiltinExtensions();
+    const entries = (project && Array.isArray(project.extensions)) ? project.extensions : [];
+    for (const entry of entries) {
+        if (typeof entry !== 'string' || !/^https?:\/\//i.test(entry)) continue;
         try {
-            await registerExtensionFromUrl(url, opts);
+            await registerExtensionFromUrl(entry, opts);
         } catch (e) {
-            console.warn(`Could not load extension ${url}: ${e.message}`);
+            console.warn(`Could not load extension ${entry}: ${e.message}`);
         }
     }
 };
