@@ -161,8 +161,22 @@ const parseInsertedBlock = (blockId, blocks) => {
 };
 
 const getDefinition = (block, blocks) => {
-    const definitionId = block.inputs.custom_block[1];
+    const customBlock = block.inputs && block.inputs.custom_block;
+    if (!customBlock || !customBlock[1]) {
+        // Malformed/edge-case procedures_definition without a custom_block
+        // input; don't crash the whole parse — emit a placeholder definition.
+        return new Definition(
+            block.id,
+            Sanitizer.labelSanitize(
+                (block.mutation && block.mutation.proccode) || '???',
+            ),
+        );
+    }
+    const definitionId = customBlock[1];
     const definition = blocks[definitionId];
+    if (!definition || !definition.mutation) {
+        return new Definition(block.id, '???');
+    }
     const args = {
         s: [],
         b: [],
@@ -173,8 +187,19 @@ const getDefinition = (block, blocks) => {
     };
     JSON.parse(definition.mutation.argumentids).forEach(argId => {
         // For Scratch 2.0-ish definitions
-        argId = definition.inputs[argId][1];
+        const inRef = definition.inputs[argId];
+        if (!inRef || !inRef[1]) {
+            args.s.push('()');
+            counts.s++;
+            return;
+        }
+        argId = inRef[1];
         const argBlock = blocks[argId];
+        if (!argBlock || !argBlock.fields || !argBlock.fields.VALUE) {
+            args.s.push('()');
+            counts.s++;
+            return;
+        }
         const arg = argBlock.fields.VALUE[0];
         if (argBlock.opcode === 'argument_reporter_string_number') {
             args.s.push(`(${arg})`);
