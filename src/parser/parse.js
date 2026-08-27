@@ -58,7 +58,7 @@ const getInputtablesForBlock = (block, blocks, asScript) => {
         const shadowType = value[0];
         if (key.startsWith('SUBSTACK') && asScript) {
             // Blocks inside C-block
-            inputtables[key] = new Stack(parseScript(value[1], blocks));
+            inputtables[key] = new Stack(value[1] ? parseScript(value[1], blocks) : []);
             return;
         }
         const isInputVariable = Array.isArray(value[1]) && value[1][0] > 11;
@@ -272,6 +272,20 @@ const parseScript = (scriptStart, blocks, comments) => {
                         block.id,
                         opcode,
                         getInputtablesForBlock(block, blocks, true)
+                    );
+                    break;
+                case REPORTER_BLOCK:
+                    parsedBlock = new ReporterBlock(
+                        block.id,
+                        opcode,
+                        getInputtablesForBlock(block, blocks)
+                    );
+                    break;
+                case BOOLEAN_BLOCK:
+                    parsedBlock = new BooleanBlock(
+                        block.id,
+                        opcode,
+                        getInputtablesForBlock(block, blocks)
                     );
                     break;
             }

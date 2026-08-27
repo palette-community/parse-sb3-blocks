@@ -32,6 +32,14 @@ import {
     E_BLOCK,
     REPORTER_BLOCK,
 } from './block-mapping/block-enum.js';
+import {
+    compileExtensionInfo,
+    registerExtensionMeta,
+    registerExtensionInfo,
+    registerExtensions,
+    registerExtensionFromSource,
+    registerBundledExtensions,
+} from './extension-registry.js';
 
 export {
     toScratchblocks,
@@ -62,4 +70,10 @@ export {
     C_BLOCK,
     E_BLOCK,
     REPORTER_BLOCK,
+    compileExtensionInfo,
+    registerExtensionMeta,
+    registerExtensionInfo,
+    registerExtensions,
+    registerExtensionFromSource,
+    registerBundledExtensions,
 };

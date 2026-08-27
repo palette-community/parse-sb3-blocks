@@ -18,7 +18,8 @@ import {
 import Stack from '../input/stack.js';
 
 import allBlocks from '../block-mapping/all-blocks.js';
-import { getMessageForLocale } from '../block-mapping/block-mapping.js';
+import Sanitizer from '../sanitizer.js';
+import { getMessageForLocale, getOptsForLocale } from '../block-mapping/block-mapping.js';
 import { BLOCK, BOOLEAN_BLOCK, C_BLOCK, E_BLOCK, REPORTER_BLOCK } from '../block-mapping/block-enum.js';
 
 const COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
@@ -107,6 +108,10 @@ const tokenizeLine = line => {
             let depth = 0;
             let j = i;
             for (; j < line.length; j++) {
+                if (line[j] === '\\' && j + 1 < line.length) {
+                    j++;
+                    continue;
+                }
                 if (line[j] === open) depth++;
                 else if (line[j] === close) {
                     depth--;
@@ -138,7 +143,9 @@ const matchTokens = (lineTokens, template) => {
         const t = template[i];
         if (t.type === 'text') {
             if (l.type !== 'text') return null;
-            if (l.value.trim() !== t.value.trim()) return null;
+            // Templates may escape comparison operators (e.g. `\<`), while the
+            // rendered line has them unescaped. Compare the unescaped forms.
+            if (unescape(l.value).trim() !== unescape(t.value).trim()) return null;
         } else {
             if (l.type === 'text') return null;
             map[t.key] = l;
@@ -155,8 +162,17 @@ const buildCandidates = locale => {
         const info = allBlocks[opcode];
         if (info.noTranslation) return;
         const msg = getMessageForLocale(locale, opcode);
+        let template = tokenizeTemplate(msg);
+        // Some English translations drop their placeholders (e.g. CONTROL_STOP
+        // => "stop"). Fall back to the canonical defaultMessage so the reverse
+        // parser can still capture inputs. Forward emits placeholder-shaped
+        // syntax, so this keeps round-trips lossless.
+        if (!template.some(t => t.type === 'placeholder') && info.defaultMessage) {
+            const dmTpl = tokenizeTemplate(Sanitizer.labelSanitize(info.defaultMessage));
+            if (dmTpl.some(t => t.type === 'placeholder')) template = dmTpl;
+        }
         const type = info.type || BLOCK;
-        const cand = { opcode, type, template: tokenizeTemplate(msg) };
+        const cand = { opcode, type, template };
         if (type === REPORTER_BLOCK || type === BOOLEAN_BLOCK) expr.push(cand);
         else stmt.push(cand);
     });
@@ -210,40 +226,74 @@ class Parser {
             if (inner.trim() === '') return new EmptyBooleanInput();
             const varMatch = /(.+?)::\s*variables$/.exec(inner);
             if (varMatch) return new Variable(null, unescape(varMatch[1]), 'variables', BOOLEAN_BLOCK);
-            const block = this.matchBlock(inner, this.candidates.expr);
-            if (block) return block;
-            return new Variable(null, unescape(inner), null, BOOLEAN_BLOCK);
+            let work = inner;
+            let options = null;
+            const optTail = /^(.*?)::\s*([\w-]+)(?:\s+([\w-]+))?$/.exec(inner);
+            if (optTail && optTail[2] !== 'variables' && optTail[2] !== 'list') {
+                work = optTail[1];
+                options = { category: optTail[2], type: optTail[3] };
+            }
+            const block = this.matchBlock(work, this.candidates.expr, options);
+            if (block) {
+                if (options) block._options = options;
+                return block;
+            }
+            return new Variable(null, unescape(work), null, BOOLEAN_BLOCK);
         }
         // reporter
         const listMatch = /(.+?)::\s*list$/.exec(inner);
         if (listMatch) return new Variable(null, unescape(listMatch[1]), 'list', REPORTER_BLOCK);
         const varMatch = /(.+?)::\s*variables$/.exec(inner);
         if (varMatch) return new Variable(null, unescape(varMatch[1]), 'variables', REPORTER_BLOCK);
-        if (NUMBER_RE.test(inner)) return new NumberInput(inner);
-        const block = this.matchBlock(inner, this.candidates.expr);
-        if (block) return block;
+        // Strip a trailing ::category / ::type option (e.g. `length of [x v]::data`)
+        // without consuming the `::variables` / `::list` variable forms above.
+        let work = inner;
+        let options = null;
+        const optTail = /^(.*?)::\s*([\w-]+)(?:\s+([\w-]+))?$/.exec(inner);
+        if (optTail && optTail[2] !== 'variables' && optTail[2] !== 'list') {
+            work = optTail[1];
+            options = { category: optTail[2], type: optTail[3] };
+        }
+        if (NUMBER_RE.test(work)) return new NumberInput(work);
+        const block = this.matchBlock(work, this.candidates.expr, options);
+        if (block) {
+            if (options) block._options = options;
+            return block;
+        }
         return new Variable(null, unescape(inner), null, REPORTER_BLOCK);
     }
 
     // Match an inner string against reporter/boolean block templates.
-    matchBlock(inner, candidates) {
+    matchBlock(inner, candidates, options) {
         const tokens = tokenizeLine(inner).filter(t => t.type !== 'comment');
+        let matches = [];
         for (const cand of candidates) {
             const map = matchTokens(tokens, cand.template);
             if (!map) continue;
-            const inputtables = {};
-            Object.keys(map).forEach(key => {
-                inputtables[key] = this.parseExpr(map[key]);
-            });
-            const Cls = classForType(cand.type);
-            const block = new Cls(null, cand.opcode, inputtables);
-            // Let any menus learn their parent opcode for static/dynamic disambiguation.
-            Object.keys(inputtables).forEach(k => {
-                if (inputtables[k] instanceof Menu) inputtables[k].opcode = cand.opcode;
-            });
-            return block;
+            matches.push({ cand, map });
         }
-        return null;
+        if (!matches.length) return null;
+        // Use a trailing ::category hint to disambiguate identical-looking templates
+        // (e.g. `length of [x v]::data` vs `length of [x v]::operators`).
+        if (options && options.category) {
+            const filtered = matches.filter(m => {
+                const o = getOptsForLocale(this.opts.locale, m.cand.opcode);
+                return o && o.category === options.category;
+            });
+            if (filtered.length) matches = filtered;
+        }
+        const { cand, map } = matches[0];
+        const inputtables = {};
+        Object.keys(map).forEach(key => {
+            inputtables[key] = this.parseExpr(map[key]);
+        });
+        const Cls = classForType(cand.type);
+        const block = new Cls(null, cand.opcode, inputtables);
+        // Let any menus learn their parent opcode for static/dynamic disambiguation.
+        Object.keys(inputtables).forEach(k => {
+            if (inputtables[k] instanceof Menu) inputtables[k].opcode = cand.opcode;
+        });
+        return block;
     }
 
     // Match a statement-level line; returns {cand, map} or null.
@@ -314,7 +364,8 @@ class Parser {
         }
         // Generic statement.
         let tokens = tokenizeLine(line);
-        // Strip trailing block options (::category / ::type).
+        // Strip trailing block options (::category / ::type). These may be glued
+        // to the final word (e.g. "key pressed::event") or a separate token.
         let options = {};
         const last = tokens[tokens.length - 1];
         if (last && last.type === 'text') {
@@ -322,6 +373,24 @@ class Parser {
             if (optMatch) {
                 options = { category: optMatch[1], type: optMatch[2] };
                 tokens = tokens.slice(0, -1);
+            } else {
+                const tailMatch = /^(.*?)::\s*([\w-]+)(?:\s+([\w-]+))?$/.exec(last.value.trim());
+                if (tailMatch) {
+                    options = { category: tailMatch[2], type: tailMatch[3] };
+                    last.value = tailMatch[1];
+                }
+            }
+        }
+        // A lone reporter/boolean expression on its own line (a floating reporter,
+        // e.g. a top-level extension reporter) isn't a statement, so match it via
+        // the expression candidates instead of the statement ones.
+        if (tokens.length === 1) {
+            const t = tokens[0];
+            if (t.kind === 'reporter' || t.kind === 'boolean') {
+                const block = this.parseExpr(t);
+                block.comment = comment;
+                this.pos++;
+                return block;
             }
         }
         const matched = this.matchStatement(tokens);
