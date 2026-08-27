@@ -66,6 +66,43 @@ export const toScratchblocksProject = async (project, opts = {}) => {
     return targetTexts.filter(Boolean).join('\n\n');
 };
 
+// Convert a full SB3 project into a structured JSON: blocks are grouped by
+// target (角色), and within each target split into `scripts` (connected stacks
+// starting at a top-level block that has a `next`) and `orphans` (isolated
+// top-level blocks with no `next` — floating reporters, single detached
+// commands, empty hats). Extensions listed in the project's `extensions` array
+// are fetched and registered automatically.
+export const projectToSnippets = async (project, opts = {}) => {
+    await registerExtensionsFromProject(project, opts);
+    const locale = opts.locale || 'en';
+    const renderOpts = { tab: '    ', ...opts };
+    const targets = {};
+    (project.targets || []).forEach((target, index) => {
+        const blocks = target.blocks || {};
+        const comments = target.comments || {};
+        const scripts = [];
+        const orphans = [];
+        const top = Object.keys(blocks).filter(id => blocks[id] && blocks[id].topLevel);
+        for (const id of top) {
+            const block = blocks[id];
+            const opcode = block.opcode;
+            const text = toScratchblocks(id, blocks, locale, renderOpts, comments);
+            const info = allBlocks[opcode] || {};
+            const isHat = opcode.startsWith('event_') || info.isHat;
+            const isReporter = info.type === REPORTER_BLOCK || info.type === BOOLEAN_BLOCK;
+            const isOrphan = isReporter || ((block.next === null || block.next === undefined) && !isHat);
+            if (isOrphan) {
+                orphans.push(text);
+            } else {
+                scripts.push(text);
+            }
+        }
+        const name = target.name || `target${index}`;
+        targets[name] = { isStage: !!target.isStage, scripts, orphans };
+    });
+    return { targets };
+};
+
 export {
     toScratchblocks,
     parseScratchblocks,

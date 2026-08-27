@@ -57,6 +57,31 @@ import { toSB3 } from 'parse-sb3-blocks';
 const { blocks, comments, scriptStarts } = toSB3(scripts);
 ```
 
+### 工程级转换（自动加载扩展）
+这些辅助函数作用于完整的 SB3 工程对象（即解析后的 `project.json`）。它们会自动加载工程顶层 `extensions` 数组中列出的所有 JS 扩展（借助 scratch-sandbox），因此无需任何手动提取步骤。
+
+#### toScratchblocksProject
+把每个角色的脚本渲染成一段拼接好的 scratchblocks 文本。
+
+```js
+import { toScratchblocksProject } from 'parse-sb3-blocks';
+
+const text = await toScratchblocksProject(project, { locale: 'en' });
+```
+
+#### projectToSnippets
+返回一个按角色（target）分组的 JSON。在每个角色内部，积木被拆分为 `scripts`（从带有 `next` 的顶层积木开始的连续堆栈，或任何帽子/事件积木）与 `orphans`（没有 `next` 的孤立顶层积木——悬空的报告积木、单独的脱离命令积木）。返回值是纯 JSON，用 `JSON.stringify` 即可得到最终输出。
+
+```js
+import { projectToSnippets } from 'parse-sb3-blocks';
+
+const { targets } = await projectToSnippets(project, { locale: 'en' });
+// {
+//   "Stage":   { "isStage": true,  "scripts": ["when @greenFlag clicked\nmove (10) steps"], "orphans": [] },
+//   "Sprite1": { "isStage": false, "scripts": ["when X::myext"], "orphans": ["say [hi]::myext", "((1) + (2))"] }
+// }
+```
+
 往返性质：`SB3 -> toScratchblocks -> parseScratchblocks -> toSB3 -> toScratchblocks` 能复现原始文本；`text -> parseScratchblocks -> toSB3 -> toScratchblocks` 同样稳定。积木级别的元数据（如坐标、shadow 标记，以及舞台级的变量/列表/广播注册表）会被重新生成而不被保留（这是结构层面的无损，而非逐字节的无损）。
 
 ### 内部函数与解析器

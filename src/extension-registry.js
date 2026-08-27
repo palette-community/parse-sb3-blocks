@@ -88,6 +88,7 @@ export const compileExtensionInfo = (info, opts = {}) => {
         const block = {
             opcode: b.opcode,
             extensionId: id,
+            isHat: b.blockType === 'hat' || b.blockType === 'event',
             type,
             template,
             args,
@@ -118,6 +119,7 @@ export const registerExtensionMeta = meta => {
             defaultMessage: b.template,
             type: b.type,
             extensionId: meta.id,
+            isHat: b.isHat,
             defaultOptions: { category: meta.id },
         };
         for (const a of b.args) {

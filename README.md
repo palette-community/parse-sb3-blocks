@@ -57,6 +57,41 @@ import { toSB3 } from 'parse-sb3-blocks';
 const { blocks, comments, scriptStarts } = toSB3(scripts);
 ```
 
+### Project conversion (auto extension loading)
+
+These helpers operate on a full SB3 project object (the parsed `project.json`).
+They automatically load any JS extensions listed in the project's top-level
+`extensions` array (via scratch-sandbox), so no manual extraction step is
+needed.
+
+#### toScratchblocksProject
+
+Renders every target's scripts into a single concatenated scratchblocks string.
+
+```js
+import { toScratchblocksProject } from 'parse-sb3-blocks';
+
+const text = await toScratchblocksProject(project, { locale: 'en' });
+```
+
+#### projectToSnippets
+
+Returns a structured JSON grouped by target (角色). Within each target, blocks
+are split into `scripts` (connected stacks starting at a top-level block that
+has a `next`, or any hat/event block) and `orphans` (isolated top-level blocks
+with no `next` — floating reporters, single detached commands). The result is
+plain JSON; pass it to `JSON.stringify` for the final output.
+
+```js
+import { projectToSnippets } from 'parse-sb3-blocks';
+
+const { targets } = await projectToSnippets(project, { locale: 'en' });
+// {
+//   "Stage":   { "isStage": true,  "scripts": ["when @greenFlag clicked\nmove (10) steps"], "orphans": [] },
+//   "Sprite1": { "isStage": false, "scripts": ["when X::myext"], "orphans": ["say [hi]::myext", "((1) + (2))"] }
+// }
+```
+
 Round trip: `SB3 -> toScratchblocks -> parseScratchblocks -> toSB3 -> toScratchblocks` reproduces the original text, and `text -> parseScratchblocks -> toSB3 -> toScratchblocks` is stable. Block-level metadata such as coordinates, shadow flags, and the stage-level variables/lists/broadcasts registries are regenerated and not preserved (this is structural, not byte-level, losslessness).
 
 ### Internal Functions and Parsers
