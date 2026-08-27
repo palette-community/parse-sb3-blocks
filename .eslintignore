@@ -1,13 +1,10 @@
-node_modules/*
-static/*
-build/*
-dist/*
-intl/*
-locales/*
-**/*.min.js
-**/node_modules/*
-**/translations.js
-test-*.js
-**/options.js
-build.temp.js
-docs/*
+# Build tooling uses Node 24 import-attribute syntax (`with { type: 'json' }`)
+# that the lint parser does not understand; it is executed directly by Node,
+# not through the bundled library, so it is excluded from linting.
+build-src/
+rollup.config.js
+scripts/
+
+# Generated documentation / browser bundle output.
+docs/
+dist/

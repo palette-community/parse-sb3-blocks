@@ -1,7 +1,7 @@
 import path from 'path';
 import { writeFile } from 'fs/promises';
 import localeObject from 'scratch-l10n';
-import extLocales from 'scratch-translate-extension-languages/languages.json' assert { type: 'json' };
+import extLocales from 'scratch-translate-extension-languages/languages.json' with { type: 'json' };
 import {
     default as allBlocks,
     allMenus,
@@ -107,10 +107,10 @@ const asyncFuncy = async () => {
     const extensionsPromise = [];
     localeNames.forEach(name => {
         blocksPromise.push(
-            import(`scratch-l10n/editor/blocks/${name}.json`, { assert: { type: 'json' } })
+            import(`scratch-l10n/editor/blocks/${name}.json`, { with: { type: 'json' } })
         );
         extensionsPromise.push(
-            import(`scratch-l10n/editor/extensions/${name}.json`, { assert: { type: 'json' } })
+            import(`scratch-l10n/editor/extensions/${name}.json`, { with: { type: 'json' } })
         );
     });
     const blocksPromiseReturned = await Promise.all(blocksPromise);
