@@ -200,6 +200,10 @@ export default {
         defaultMessage: 'forever',
         type: C_BLOCK,
     },
+    control_for_each: {
+        defaultMessage: 'for each {VARIABLE} in {VALUE}',
+        type: C_BLOCK,
+    },
     control_repeat: {
         defaultMessage: 'repeat {TIMES}',
         type: C_BLOCK,
