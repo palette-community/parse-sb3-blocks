@@ -474,6 +474,9 @@ export default {
     procedures_call: {
         noTranslation: true,
     },
+    procedures_return: {
+        defaultMessage: 'return {VALUE}',
+    },
     argument_reporter_boolean: {
         noTranslation: true,
         type: BOOLEAN_BLOCK,
