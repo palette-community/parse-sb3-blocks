@@ -48,7 +48,9 @@ const getInputtablesForBlock = (block, blocks, asScript) => {
     const inputtables = {};
     const opcode = block.opcode;
     const blockInfo = allBlocks[opcode];
-    if (blockInfo.defaultMessage.includes('{ICON}')) inputtables.ICON = opcodeToIcon[opcode];
+    if (blockInfo && blockInfo.defaultMessage && blockInfo.defaultMessage.includes('{ICON}')) {
+        inputtables.ICON = opcodeToIcon[opcode];
+    }
     Object.keys(block.fields).forEach(key => {
         // item 1 is variable ID, which we do not need.
         inputtables[key] = new Menu(null, opcode, block.fields[key][0]);
@@ -143,10 +145,10 @@ const parseInsertedBlock = (blockId, blocks) => {
     }
     const blockInfo = allBlocks[opcode];
     if (!blockInfo) {
-        // If you reached this line: please add entry to all-blocks.js.
-        throw new Error(
-            `Unknown block info for opcode ${opcode}. This is probably a bug and you should report this!`
-        );
+        // Unknown extension/custom opcode: degrade to a placeholder instead of
+        // crashing the whole project parse (mirrors parseScript's behavior).
+        console.warn('Unknown opcode: ', opcode);
+        return new StringInput(`[unknown opcode: ${opcode}]`);
     }
     let blockConstructor = Block;
     switch (blockInfo.type) {
