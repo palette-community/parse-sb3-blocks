@@ -12,9 +12,10 @@ import { parseExtension } from 'scratch-sandbox';
 // known URL. Used to re-emit a project's `extensions` array on serialization so
 // a generated SB3 can be re-parsed (and its extensions auto-loaded) later.
 const extensionUrls = Object.create(null);
-// URLs already fetched+registered this session, so a repeated project load
-// (e.g. both halves of a round-trip) doesn't re-register and spam warnings.
-const loadedExtensionUrls = new Set();
+// extensionId -> source URL, recorded by the CALLER when it supplies a source
+// (the parser itself never downloads anything; reading JS / fetching URLs is
+// the caller's responsibility). Used to re-emit a project's `extensions` array
+// on serialization so a generated SB3 carries its extension provenance.
 
 // Argument types that surface as a (static or dynamic) menu dropdown.
 const MENU_ARG_TYPES = new Set([
@@ -73,9 +74,14 @@ export const compileExtensionInfo = (info, opts = {}) => {
     const blocks = [];
     for (const b of info.blocks || []) {
         if (b.blockType === 'label' || b.blockType === 'button') continue;
+        // TurboWarp extensions declare opcodes RELATIVE to the extension id
+        // (e.g. `get`); the VM prefixes them at runtime (`<id>_get`). Prefix
+        // unless the opcode is already fully qualified with this id.
+        if (!b.opcode) continue;
+        const opcode = b.opcode.startsWith(`${id}_`) ? b.opcode : `${id}_${b.opcode}`;
         const argEntries = Object.entries(b.arguments || {});
         const argNames = argEntries.map(([name]) => name);
-        const template = convertTemplate(b.text || b.blockText || b.opcode, argNames);
+        const template = convertTemplate(b.text || b.blockText || opcode, argNames);
         const args = argEntries.map(([name, a]) => {
             const isMenu = !!(a && (a.menu || MENU_ARG_TYPES.has(a.type) || a.type === 'menu'));
             return {
@@ -86,7 +92,7 @@ export const compileExtensionInfo = (info, opts = {}) => {
         });
         const type = mapBlockType(b.blockType);
         const block = {
-            opcode: b.opcode,
+            opcode,
             extensionId: id,
             isHat: b.blockType === 'hat' || b.blockType === 'event',
             type,
@@ -165,24 +171,11 @@ export const registerExtensionFromSource = async (source, opts = {}) => {
     return result;
 };
 
-// Fetch an extension JS source by URL and register it.
-// `opts.fetch` supplies a fetch implementation (handy for tests/offline caches);
-// otherwise the global fetch is used when available.
-export const registerExtensionFromUrl = async (url, opts = {}) => {
-    if (loadedExtensionUrls.has(url)) return null;
-    const fetchImpl = opts.fetch || (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null);
-    if (!fetchImpl) {
-        throw new Error('registerExtensionFromUrl: no fetch implementation available (pass opts.fetch)');
-    }
-    const res = await fetchImpl(url);
-    if (!res.ok) {
-        throw new Error(`Failed to fetch extension ${url}: ${res.status} ${res.statusText}`);
-    }
-    const source = await res.text();
-    const result = await registerExtensionFromSource(source, { url, fetch: fetchImpl, ...opts });
-    loadedExtensionUrls.add(url);
-    return result;
-};
+// The parser is intentionally I/O-free: it never reads files or downloads URLs.
+// The CALLER is responsible for obtaining an extension's JS source (fetching a
+// URL, reading an embedded string from the project, etc.) and handing it here
+// via `registerExtensionFromSource` / `registerExtensionInfo`. See the project
+// README / git-palette for the fetch-and-register orchestration.
 
 // Register TurboWarp "core" extensions (control_while, etc.) that are injected
 // by TurboWarp and may not appear in a project's `extensions` array, so they
@@ -199,23 +192,17 @@ export const registerBuiltinExtensions = async () => {
     }
 };
 
-// Auto-load every extension referenced by a project's top-level `extensions`
-// array. Entries that are http(s) URLs are fetched and registered; bare IDs
-// (e.g. "pen", "music") are built-in/core extensions resolved from the bundled
-// block metadata (all-blocks.js / registerBuiltinExtensions) and must NOT be
-// treated as URLs. A fetch failure is warned and skipped so a missing/failed
-// extension does not abort conversion of the rest of the project.
+// Register the extensions a project needs before it is rendered. This parser is
+// I/O-free, so it only handles built-in/core extensions (resolved from bundled
+// block metadata / `registerBuiltinExtensions`). Any CUSTOM extension — whether
+// its source was loaded from a URL or embedded in the project — must be supplied
+// by the CALLER (e.g. git-palette) via `registerExtensionFromSource` /
+// `registerExtensionInfo` BEFORE the project is converted. A bare ID in
+// `project.extensions` (e.g. "pen", "music", or a custom ID) is NOT a URL and is
+// intentionally left to the caller to resolve.
 export const registerExtensionsFromProject = async (project, opts = {}) => {
     await registerBuiltinExtensions();
-    const entries = (project && Array.isArray(project.extensions)) ? project.extensions : [];
-    for (const entry of entries) {
-        if (typeof entry !== 'string' || !/^https?:\/\//i.test(entry)) continue;
-        try {
-            await registerExtensionFromUrl(entry, opts);
-        } catch (e) {
-            console.warn(`Could not load extension ${entry}: ${e.message}`);
-        }
-    }
+    // Custom extensions are the caller's responsibility; nothing to fetch here.
 };
 
 // Collect the source URLs for the extensions used by the given block opcodes,

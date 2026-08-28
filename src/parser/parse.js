@@ -86,13 +86,16 @@ const getInputtablesForBlock = (block, blocks, asScript) => {
                     ? blockInfo.remap[key]
                     : key;
                 if (!Object.prototype.hasOwnProperty.call(menu.fields, fieldKey)) {
-                    // Note to whoever is reading this:
-                    // go to all-blocks.js and add "remap" object, from key to field key
-                    throw new Error(
-                        `Non-existent key ${fieldKey}/${key} for menu opcode ${opcode}, known: ${Object.keys(
-                            menu.fields
-                        )}. This is probably a bug and you should report this!`
+                    // Missing remap entry: don't crash the whole project render for
+                    // one menu input. Fall back to the block's actual selected value.
+                    process.stderr.write(
+                        `git-palette: warning: menu remap missing for ${opcode}.${key} (field ${fieldKey})\n`,
                     );
+                    const val = block.fields[key] && block.fields[key][0] !== undefined
+                        ? block.fields[key][0]
+                        : null;
+                    inputtables[key] = new Menu(menuBlockId, opcode, val);
+                    return;
                 }
                 inputtables[key] = new Menu(menuBlockId, opcode, menu.fields[fieldKey][0]);
             }

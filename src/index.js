@@ -38,17 +38,17 @@ import {
     registerExtensionInfo,
     registerExtensions,
     registerExtensionFromSource,
-    registerExtensionFromUrl,
     registerExtensionsFromProject,
     registerBuiltinExtensions,
     registerBundledExtensions,
 } from './extension-registry.js';
 
-// Convert a full SB3 project object to scratchblocks text. Extensions listed in
-// the project's top-level `extensions` array are fetched and registered
-// automatically (via scratch-sandbox), so no manual extraction step is needed.
-// `opts` is forwarded to the extension loader (e.g. `opts.fetch` for offline
-// caches) and to the renderer. Returns the concatenated text for all targets.
+// Convert a full SB3 project object to scratchblocks text. Built-in/core
+// extensions are registered automatically; CUSTOM extensions (URL-loaded or
+// embedded in the project) must be registered by the caller via
+// `registerExtensionFromSource` / `registerExtensionInfo` BEFORE this runs. The
+// parser performs NO network or file I/O. Returns the concatenated text for all
+// targets.
 export const toScratchblocksProject = async (project, opts = {}) => {
     await registerExtensionsFromProject(project, opts);
     const locale = opts.locale || 'en';
@@ -68,11 +68,10 @@ export const toScratchblocksProject = async (project, opts = {}) => {
 };
 
 // Convert a full SB3 project into a structured JSON: blocks are grouped by
-// target (角色), and within each target split into `scripts` (connected stacks
+// target, and within each target split into `scripts` (connected stacks
 // starting at a top-level block that has a `next`) and `orphans` (isolated
-// top-level blocks with no `next` — floating reporters, single detached
-// commands, empty hats). Extensions listed in the project's `extensions` array
-// are fetched and registered automatically.
+// top-level blocks with no `next`). Built-in extensions are registered
+// automatically; custom extensions must be pre-registered by the caller.
 export const projectToSnippets = async (project, opts = {}) => {
     await registerExtensionsFromProject(project, opts);
     const locale = opts.locale || 'en';
@@ -140,7 +139,6 @@ export {
     registerExtensionInfo,
     registerExtensions,
     registerExtensionFromSource,
-    registerExtensionFromUrl,
     registerExtensionsFromProject,
     registerBuiltinExtensions,
     registerBundledExtensions,
