@@ -165,7 +165,7 @@ const parseInsertedBlock = (blockId, blocks) => {
     return new blockConstructor(blockId, opcode, getInputtablesForBlock(block, blocks));
 };
 
-const getDefinition = (block, blocks) => {
+const getDefinition = (block, blocks, comments) => {
     const customBlock = block.inputs && block.inputs.custom_block;
     if (!customBlock || !customBlock[1]) {
         // Malformed/edge-case procedures_definition without a custom_block
@@ -175,12 +175,13 @@ const getDefinition = (block, blocks) => {
             Sanitizer.labelSanitize(
                 (block.mutation && block.mutation.proccode) || '???',
             ),
+            [],
         );
     }
     const definitionId = customBlock[1];
     const definition = blocks[definitionId];
     if (!definition || !definition.mutation) {
-        return new Definition(block.id, '???');
+        return new Definition(block.id, '???', []);
     }
     const args = {
         s: [],
@@ -212,11 +213,13 @@ const getDefinition = (block, blocks) => {
             args.b.push(`<${arg}>`);
         }
     });
+    const body = block.next ? parseScript(block.next, blocks, comments) : [];
     return new Definition(
         block.id,
         Sanitizer.labelSanitize(definition.mutation.proccode).replace(/%([sb])/g, (_, s_b) => {
             return args[s_b][counts[s_b]++];
-        })
+        }),
+        body,
     );
 };
 
@@ -268,12 +271,26 @@ const parseScript = (scriptStart, blocks, comments) => {
         const opcode = block.opcode;
         const blockInfo = allBlocks[opcode];
         if (!blockInfo) {
+            // 未知 opcode：仍渲染占位符，并保留其 next 链与 SUBSTACK 体，
+            // 避免整段积木丢失（例如未注册的扩展 C 形块的肚子）。
             console.warn('Unknown opcode: ', opcode);
+            parsedBlocks.push(new StringInput(`[unknown opcode: ${opcode}]`));
+            const inputs = block.inputs || {};
+            for (const k of Object.keys(inputs)) {
+                if (k.startsWith('SUBSTACK')) {
+                    const v = inputs[k][1];
+                    if (typeof v === 'string') {
+                        for (const pb of parseScript(v, blocks, comments)) parsedBlocks.push(pb);
+                    }
+                }
+            }
             blockId = block.next;
             continue;
         }
         if (opcode === 'procedures_definition') {
-            parsedBlock = getDefinition(block, blocks);
+            parsedBlocks.push(getDefinition(block, blocks, comments));
+            blockId = null; // 函数体已在 getDefinition 内渲染
+            continue;
         } else if (opcode === 'procedures_call') {
             parsedBlock = new ProcedureCall(
                 block.id,

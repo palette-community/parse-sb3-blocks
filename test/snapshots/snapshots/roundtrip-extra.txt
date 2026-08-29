@@ -8,4 +8,4 @@ forever
 end
 
 define greet (who)
-greet [Scratch]::custom
+    greet [Scratch]::custom
