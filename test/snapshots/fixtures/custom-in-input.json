@@ -1,0 +1,41 @@
+{
+    "scriptStart": "setVar",
+    "locale": "en",
+    "opts": {},
+    "blocks": {
+        "setVar": {
+            "opcode": "data_setvariableto",
+            "next": null,
+            "parent": null,
+            "inputs": {
+                "VALUE": [2, "call"]
+            },
+            "fields": {
+                "VARIABLE": ["v", "vId"]
+            }
+        },
+        "call": {
+            "opcode": "procedures_call",
+            "next": null,
+            "parent": "setVar",
+            "inputs": {
+                "arg0": [1, "arg0"]
+            },
+            "fields": {},
+            "mutation": {
+                "tagName": "mutation",
+                "children": [],
+                "proccode": "proc %s",
+                "argumentids": "[\"arg0\"]",
+                "warp": false
+            }
+        },
+        "arg0": {
+            "opcode": "argument_reporter_string_number",
+            "next": null,
+            "parent": "call",
+            "inputs": {},
+            "fields": { "VALUE": ["x", null] }
+        }
+    }
+}

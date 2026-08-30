@@ -124,6 +124,17 @@ const tokenizeLine = line => {
             const inner = line.slice(i, j);
             const kind = c === '(' ? 'reporter' : c === '<' ? 'boolean' : 'menu';
             tokens.push({ type: 'expr', value: inner, kind });
+            // `(<expr>)::custom` mid-expression: absorb the `::custom` suffix
+            // into this token so a procedures_call used as a vanilla block's
+            // input is recognised as a single expression token (matching the
+            // template's `{X}` / `{Y}` placeholders). The raw `line` is
+            // untouched, so the statement-level `::custom$` check below
+            // (for top-level procedure calls) still fires when appropriate.
+            const customMatch = /^::\s*custom\b/.exec(line.slice(j));
+            if (customMatch) {
+                tokens[tokens.length - 1].isCustom = true;
+                j += customMatch[0].length;
+            }
             i = j;
             continue;
         }
@@ -238,6 +249,15 @@ class Parser {
     // Parse the inline value of an expression token into an Inputtable.
     parseExpr(token) {
         if (token.type === 'icon') return new Icon(token.value);
+        // `(<inner>)::custom` absorbed by the tokenizer marks a custom-block
+        // call used as an input. Strip the outer parens and parse the inner
+        // as a procedures_call.
+        if (token.isCustom) {
+            const m = /^[(<\[]([\s\S]*)[)\]>]$/.exec(token.value);
+            const inner = m ? m[1] : token.value;
+            const { proc, args } = this.parseProcCall(inner);
+            return new ProcedureCall(null, proc, args);
+        }
         const raw = token.value;
         const inner = raw.slice(1, -1);
         if (token.kind === 'menu') {
