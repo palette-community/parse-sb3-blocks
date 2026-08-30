@@ -435,7 +435,11 @@ class Parser {
         // Reconstruct the call explicitly: name `// %s`, single string argument.
         const commentProc = line.match(/^\/\/\s*\[([\s\S]*?)\]::\s*custom$/);
         if (commentProc) {
-            const block = new ProcedureCall(null, '// %s', [new StringInput(commentProc[1])]);
+            // The captured arg is raw scratchblocks-escaped text; unescape
+            // it before handing to StringInput, which will re-sanitize on
+            // serialize. Without this, `\` in the value is double-escaped
+            // and the round-trip diverges.
+            const block = new ProcedureCall(null, '// %s', [new StringInput(unescape(commentProc[1]))]);
             block.comment = comment;
             this.pos++;
             return block;
@@ -659,7 +663,11 @@ class Parser {
                 continue;
             }
             const info = (conn.opcode && allBlocks[conn.opcode]) || {};
-            const isHat = (conn.opcode && conn.opcode.startsWith('event_')) || info.isHat;
+            // A hat starts a new script. Only `event_when*` opcodes are hats;
+            // `event_broadcast` / `event_broadcast_menu` are plain statements
+            // and must continue the current script's `next` chain.
+            const isHat = info.isHat ||
+                (conn.opcode && /^event_when/.test(conn.opcode));
             const isReporter = info.type === REPORTER_BLOCK || info.type === BOOLEAN_BLOCK;
             const isStarter = conn instanceof Definition || isHat || isReporter;
             if (!current || currentClosed || isStarter) {

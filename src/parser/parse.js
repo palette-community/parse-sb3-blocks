@@ -141,10 +141,13 @@ const parseInsertedBlock = (blockId, blocks) => {
     const block = blocks[blockId];
     const opcode = block.opcode;
     if (opcode === 'argument_reporter_string_number') {
-        return new Variable(blockId, block.fields.VALUE[0], 'custom', REPORTER_BLOCK);
+        // Use a plain reporter (no `category`) so Variable.toScratchblocks
+        // omits the `::custom` suffix; an in-scope param is recognised by
+        // the reverse parser via paramStack and rendered as `(name)`.
+        return new Variable(blockId, block.fields.VALUE[0], null, REPORTER_BLOCK);
     }
     if (opcode === 'argument_reporter_boolean') {
-        return new Variable(blockId, block.fields.VALUE[0], 'custom', BOOLEAN_BLOCK);
+        return new Variable(blockId, block.fields.VALUE[0], null, BOOLEAN_BLOCK);
     }
     if (opcode === 'procedures_call') {
         // A custom-block call used as an input (e.g. plugged into a vanilla
