@@ -200,9 +200,82 @@ export const registerBuiltinExtensions = async () => {
 // `registerExtensionInfo` BEFORE the project is converted. A bare ID in
 // `project.extensions` (e.g. "pen", "music", or a custom ID) is NOT a URL and is
 // intentionally left to the caller to resolve.
+
+// Local data: URL decoder (parse-sb3-blocks is I/O-free and must not depend
+// on extension-git). Supports `data:application/javascript[;charset=…][;base64],…`
+// and `data:text/javascript[;charset=…],<percent-encoded or raw>`.
+const decodeDataUrl = url => {
+    const m = url.match(/^data:(?:application|text)\/javascript(?:;([^,]*))?,(.*)$/s);
+    if (!m) return null;
+    const meta = m[1] || '';
+    const payload = m[2];
+    try {
+        if (/base64/i.test(meta)) return Buffer.from(payload, 'base64').toString('utf8');
+        return decodeURIComponent(payload);
+    } catch {
+        return null;
+    }
+};
+// Track URLs already auto-fetched+registered in this process so repeated
+// passes (e.g. forward then re-emit + re-parse) don't emit duplicate-opcode
+// warnings. The caller can clear this with `resetAutoRegistered()` between
+// independent sessions if needed.
+const autoRegistered = new Set();
+export const resetAutoRegistered = () => autoRegistered.clear();
+
 export const registerExtensionsFromProject = async (project, opts = {}) => {
     await registerBuiltinExtensions();
-    // Custom extensions are the caller's responsibility; nothing to fetch here.
+    // Auto-fetch and register any custom extensions the project references.
+    // An entry in `project.extensions` can be either a bare id (resolved by
+    // builtins above or left to the caller as unresolved) or a URL — the
+    // latter case lets a project carry its extension source inline so the
+    // forward render doesn't drop the extension's blocks. The optional
+    // `opts.fetch(url)` (and a built-in data: URL fallback) is used to obtain
+    // the source; the caller may pre-register via `registerExtensionFromSource`
+    // to skip the fetch.
+    const fetchUrl = opts.fetch;
+    const need = new Set();
+    const urls = new Map(); // id -> url
+    for (const entry of project.extensions || []) {
+        if (typeof entry !== 'string') continue;
+        if (/^(https?|data):/i.test(entry)) {
+            // Bare URL in the extensions array: synthesise an id from the URL.
+            const id = 'ext_' + entry.replace(/[^A-Za-z0-9]+/g, '_').slice(0, 40);
+            urls.set(id, entry);
+            need.add(id);
+        }
+    }
+    for (const [id, url] of Object.entries(project.extensionURLs || {})) {
+        if (typeof url === 'string' && url) {
+            urls.set(id, url);
+            need.add(id);
+        }
+    }
+    for (const id of need) {
+        const url = urls.get(id);
+        let source = null;
+        if (/^data:/i.test(url)) {
+            source = decodeDataUrl(url);
+        } else if (typeof fetchUrl === 'function') {
+            try {
+                const res = await fetchUrl(url);
+                if (res && res.ok !== false && typeof res.text === 'function') {
+                    source = await res.text();
+                }
+            } catch {
+                /* swallow; extension stays unregistered */
+            }
+        }
+        if (source) {
+            if (autoRegistered.has(url)) continue;
+            autoRegistered.add(url);
+            try {
+                await registerExtensionFromSource(source, { ...opts, url });
+            } catch {
+                /* swallow; a single failed extension shouldn't break the project */
+            }
+        }
+    }
 };
 
 // Collect the source URLs for the extensions used by the given block opcodes,
