@@ -73,11 +73,18 @@ const getMenuKeyForValue = (opcode, value) => {
 };
 
 const getMenuItemForLocale = (locale, opcode, value) => {
-    const translationKey = allMenus[opcode][value].translationKey;
+    const item = allMenus[opcode] && allMenus[opcode][value];
+    if (!item) {
+        // Dynamic menu value (sprite / costume / variable name) not present
+        // in the static menu map; fall back to the literal value so the
+        // forward renderer doesn't crash.
+        return Sanitizer.sanitize(String(value == null ? '' : value));
+    }
+    const translationKey = item.translationKey;
     if (translations[locale] && translations[locale][translationKey]) {
         return Sanitizer.sanitize(translations[locale][translationKey]);
     }
-    return Sanitizer.sanitize(allMenus[opcode][value].defaultMessage);
+    return Sanitizer.sanitize(item.defaultMessage);
 };
 
 export {
