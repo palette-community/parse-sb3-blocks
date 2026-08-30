@@ -322,10 +322,19 @@ const menuOpcodeFor = (opcode, key) => {
         const argObs = argNames.map(() => takeOb());
         const defId = defOb ? defOb.id : genId();
         const protoId = protoOb ? protoOb.id : genId();
-        const argIds = argObs.map(a => (a ? a.id : genId()));
+        // Preserve the original prototype `inputs` keys (the dynamic argId
+        // strings) when the definition was reverse-parsed; otherwise generate
+        // fresh keys. The reporter block ids (the values in defInputs)
+        // still come from the cursor / genId — only the KEY strings are
+        // preserved here, which is what `procedures_call.inputs` references.
+        const preserved = conn.argIds && conn.argIds.length === argNames.length
+            ? conn.argIds.slice()
+            : null;
+        const argIds = preserved || argNames.map(() => genId());
+        const reporterIds = argObs.map(a => (a ? a.id : genId()));
         const defInputs = {};
-        argIds.forEach(aId => {
-            defInputs[aId] = [1, aId];
+        argIds.forEach((aId, i) => {
+            defInputs[aId] = [1, reporterIds[i]];
         });
         reg({
             id: defId,
@@ -361,7 +370,7 @@ const menuOpcodeFor = (opcode, key) => {
         });
         argNames.forEach((name, i) => {
             reg({
-                id: argIds[i],
+                id: reporterIds[i],
                 opcode: 'argument_reporter_string_number',
                 next: null,
                 parent: defId,
@@ -385,7 +394,13 @@ const menuOpcodeFor = (opcode, key) => {
     const serializeProcCall = (conn, topLevel) => {
         const ob = takeOb();
         const id = ob ? ob.id : genId();
-        const argIds = conn.argObj.map(() => genId());
+        // When the call was reverse-parsed from a real .sb3, preserve the
+        // original `inputs` keys (the dynamic argIds) so the round-trip is
+        // byte-identical. Otherwise (forward rendering a synthesised call)
+        // generate fresh positional keys.
+        const argIds = conn.argIds && conn.argIds.length === conn.argObj.length
+            ? conn.argIds.slice()
+            : conn.argObj.map(() => genId());
         const inputs = {};
         conn.argObj.forEach((arg, i) => {
             inputs[argIds[i]] = serializeInput(arg, id, 'procedures_call', argIds[i]);
