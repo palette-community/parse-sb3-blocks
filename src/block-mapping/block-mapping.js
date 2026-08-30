@@ -55,6 +55,23 @@ const getSpecialMessage = (locale, key) => {
 const isSpecialMenuValue = (opcode, value) =>
     Object.prototype.hasOwnProperty.call(allMenus[opcode] || {}, value);
 
+// Reverse lookup: given a parent opcode and the displayed menu value (which may be
+// the translated/lower-cased label), return the canonical menu key used in sb3
+// `fields` (e.g. "BRIGHTNESS" for the displayed "brightness"). Returns null when the
+// value is not a known special menu option (e.g. it is a dynamic variable/list name).
+const getMenuKeyForValue = (opcode, value) => {
+    const m = allMenus[opcode] || {};
+    if (Object.prototype.hasOwnProperty.call(m, value)) return value;
+    const lc = String(value == null ? '' : value).toLowerCase();
+    if (!lc) return null;
+    for (const k of Object.keys(m)) {
+        if (k.toLowerCase() === lc) return k;
+        const def = m[k] && m[k].defaultMessage;
+        if (def && def.toLowerCase() === lc) return k;
+    }
+    return null;
+};
+
 const getMenuItemForLocale = (locale, opcode, value) => {
     const translationKey = allMenus[opcode][value].translationKey;
     if (translations[locale] && translations[locale][translationKey]) {
@@ -68,6 +85,7 @@ export {
     getOptsForLocale,
     getSpecialMessage,
     isSpecialMenuValue,
+    getMenuKeyForValue,
     getMenuItemForLocale,
     getOpcodeFromTranslationKey,
     getTranslationKeyFromValue,

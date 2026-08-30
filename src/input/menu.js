@@ -1,5 +1,5 @@
 import Sanitizer from '../sanitizer.js';
-import { getMenuItemForLocale, isSpecialMenuValue } from '../block-mapping/block-mapping.js';
+import { getMenuItemForLocale, getMenuKeyForValue } from '../block-mapping/block-mapping.js';
 
 export default class Menu {
     constructor(id, opcode, content) {
@@ -7,7 +7,10 @@ export default class Menu {
         // note: opcode is the opcode of the PARENT block.
         this.opcode = opcode;
         this.content = content;
-        this.isSpecial = isSpecialMenuValue(opcode, content);
+        // A "special" menu is a fixed option list (effects, directions, ...).
+        // Variable/list selectors are dynamic and are not special.
+        this.isSpecial = getMenuKeyForValue(opcode, content) !== null;
+        this.menuKey = this.isSpecial ? getMenuKeyForValue(opcode, content) : null;
     }
 
     blockSyntax(locale) {

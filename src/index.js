@@ -77,11 +77,16 @@ export const projectToSnippets = async (project, opts = {}) => {
     const locale = opts.locale || 'en';
     const renderOpts = { tab: '    ', ...opts };
     const targets = {};
+    // Per-target top-level block positions, in the same order the text is
+    // emitted (scripts first, then orphans). The reverse path zips these back
+    // onto the parsed top-level blocks so round-trips stay lossless.
+    const positions = {};
     (project.targets || []).forEach((target, index) => {
         const blocks = target.blocks || {};
         const comments = target.comments || {};
         const scripts = [];
         const orphans = [];
+        const pos = [];
         const top = Object.keys(blocks).filter(id => blocks[id] && blocks[id].topLevel);
         for (const id of top) {
             const block = blocks[id];
@@ -93,6 +98,7 @@ export const projectToSnippets = async (project, opts = {}) => {
             const isReporter = info.type === REPORTER_BLOCK || info.type === BOOLEAN_BLOCK;
             const isControl = info.type === C_BLOCK || info.type === E_BLOCK;
             const isOrphan = isReporter || (!isHat && !isControl && (block.next === null || block.next === undefined));
+            pos.push([Number(block.x) || 0, Number(block.y) || 0]);
             if (isOrphan) {
                 orphans.push(text);
             } else {
@@ -101,8 +107,9 @@ export const projectToSnippets = async (project, opts = {}) => {
         }
         const name = target.name || `target${index}`;
         targets[name] = { isStage: !!target.isStage, scripts, orphans };
+        positions[name] = pos;
     });
-    return { targets };
+    return { targets, positions };
 };
 
 export {

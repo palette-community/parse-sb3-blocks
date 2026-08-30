@@ -146,6 +146,14 @@ const parseInsertedBlock = (blockId, blocks) => {
     if (opcode === 'argument_reporter_boolean') {
         return new Variable(blockId, block.fields.VALUE[0], 'custom', BOOLEAN_BLOCK);
     }
+    if (opcode === 'procedures_call') {
+        // A custom-block call used as an input (e.g. plugged into a vanilla
+        // reporter like `motion_gotoxy` X). Reuse the same ProcedureCall shape
+        // that top-level calls have so its `toScratchblocks` produces the
+        // `<proccode> [arg1] [arg2]::custom` text the forward renderer expects.
+        const proc = (block.mutation && Sanitizer.labelSanitize(block.mutation.proccode)) || '???';
+        return new ProcedureCall(blockId, proc, getProcCallArgs(block, blocks));
+    }
     const blockInfo = allBlocks[opcode];
     if (!blockInfo) {
         // Unknown extension/custom opcode: degrade to a placeholder instead of

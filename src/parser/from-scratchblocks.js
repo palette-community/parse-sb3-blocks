@@ -136,20 +136,41 @@ const tokenizeLine = line => {
 
 const matchTokens = (lineTokens, template) => {
     const lt = lineTokens.filter(t => t.type !== 'comment');
-    if (lt.length !== template.length) return null;
+    if (lt.length === template.length) {
+        const map = {};
+        for (let i = 0; i < lt.length; i++) {
+            const l = lt[i];
+            const t = template[i];
+            if (t.type === 'text') {
+                if (l.type !== 'text') return null;
+                if (unescape(l.value).trim() !== unescape(t.value).trim()) return null;
+            } else {
+                if (l.type === 'text') return null;
+                map[t.key] = l;
+            }
+        }
+        return map;
+    }
+    if (lt.length > template.length) return null;
+    // lt.length < template.length: allow the trailing template placeholders to
+    // match empty (e.g. `round ()` => a reporter whose numeric input is blank).
+    for (let i = lt.length; i < template.length; i++) {
+        if (template[i].type !== 'placeholder') return null;
+    }
     const map = {};
     for (let i = 0; i < lt.length; i++) {
         const l = lt[i];
         const t = template[i];
         if (t.type === 'text') {
             if (l.type !== 'text') return null;
-            // Templates may escape comparison operators (e.g. `\<`), while the
-            // rendered line has them unescaped. Compare the unescaped forms.
             if (unescape(l.value).trim() !== unescape(t.value).trim()) return null;
         } else {
             if (l.type === 'text') return null;
             map[t.key] = l;
         }
+    }
+    for (let i = lt.length; i < template.length; i++) {
+        map[template[i].key] = { type: 'text', kind: 'reporter', value: '' };
     }
     return map;
 };
@@ -185,6 +206,10 @@ class Parser {
         this.lines = text.split('\n');
         this.pos = 0;
         this.candidates = buildCandidates(this.opts.locale);
+        // Stack of parameter-name sets for the procedures currently being
+        // parsed, so expression parsing can tell a procedure parameter
+        // (`(n :: custom)`) apart from a custom-block call (`(block :: custom)`).
+        this.paramStack = [];
     }
 
     indentOf(line) {
@@ -233,12 +258,21 @@ class Parser {
                 work = optTail[1];
                 options = { category: optTail[2], type: optTail[3] };
             }
+            if (options && options.category === 'custom') {
+                if (this.isCurrentParam(work)) {
+                    const blk = new Block(null, 'argument_reporter_boolean', {});
+                    blk.fields = { VALUE: [unescape(work), null] };
+                    return blk;
+                }
+                const { proc, args } = this.parseProcCall(work);
+                return new ProcedureCall(null, proc, args);
+            }
             const block = this.matchBlock(work, this.candidates.expr, options);
             if (block) {
                 if (options) block._options = options;
                 return block;
             }
-            return new Variable(null, unescape(work), null, BOOLEAN_BLOCK);
+            return new Variable(null, unescape(work), options ? options.category : null, BOOLEAN_BLOCK);
         }
         // reporter
         const listMatch = /(.+?)::\s*list$/.exec(inner);
@@ -254,13 +288,27 @@ class Parser {
             work = optTail[1];
             options = { category: optTail[2], type: optTail[3] };
         }
+        if (options && options.category === 'custom') {
+            if (this.isCurrentParam(work)) {
+                const blk = new Block(null, 'argument_reporter_string_number', {});
+                blk.fields = { VALUE: [unescape(work), null] };
+                return blk;
+            }
+            const { proc, args } = this.parseProcCall(work);
+            return new ProcedureCall(null, proc, args);
+        }
         if (NUMBER_RE.test(work)) return new NumberInput(work);
         const block = this.matchBlock(work, this.candidates.expr, options);
         if (block) {
             if (options) block._options = options;
             return block;
         }
-        return new Variable(null, unescape(inner), null, REPORTER_BLOCK);
+        return new Variable(null, unescape(work), options ? options.category : null, REPORTER_BLOCK);
+    }
+
+    isCurrentParam(name) {
+        const stack = this.paramStack;
+        return stack.length > 0 && stack[stack.length - 1].has(String(name).trim());
     }
 
     // Match an inner string against reporter/boolean block templates.
@@ -345,12 +393,62 @@ class Parser {
             comment = line.slice(commentIdx + 4).trim();
             line = line.slice(0, commentIdx).trim();
         }
+        // A standalone comment line (scratchblocks `//` or an escaped `\//`). It
+        // must be treated as a comment, never as a block — otherwise a comment
+        // whose text happens to end with `::custom` / `::ext` would be misread
+        // as a procedure call / extension block and break the round-trip.
+        if (/^\\?\/\//.test(line)) {
+            // Exception: a line that *also* ends with `::<category>` is a
+            // procedure/extension block whose name literally begins with `//`
+            // (an escaped comment marker), not a comment. Let it fall through so
+            // the procedure/extension branches parse it correctly.
+            if (!/::\s*[\w-]+\s*$/.test(line)) {
+                this.pos++;
+                return { __comment: line.replace(/^\\?\/\//, '').trim() };
+            }
+            // Drop only the leading escape char; the `//` itself belongs to the
+            // block name (`\// foo` is scratchblocks' escaped `// foo`).
+            line = line.replace(/^\\/, '');
+        }
+        // Calls to a procedure literally named `//` (proccode `// %s`) render as
+        // `// [arg]::custom`, which scratchblocks would otherwise read as a comment.
+        // Reconstruct the call explicitly: name `// %s`, single string argument.
+        const commentProc = line.match(/^\/\/\s*\[([\s\S]*?)\]::\s*custom$/);
+        if (commentProc) {
+            const block = new ProcedureCall(null, '// %s', [new StringInput(commentProc[1])]);
+            block.comment = comment;
+            this.pos++;
+            return block;
+        }
         // Procedure definition.
         if (line.startsWith('define ')) {
             const proc = line.slice(6).trim();
             const block = new Definition(null, proc);
             block.comment = comment;
             this.pos++;
+            // Track this procedure's parameter names so that references to them
+            // inside the body parse as `argument_reporter` (not variables/calls).
+            const argNames = [...proc.matchAll(/\(([^)]*)\)/g)].map((m) => m[1].trim()).filter(Boolean);
+            this.paramStack.push(new Set(argNames));
+            // Consume the indented function body so it stays attached to the
+            // definition (otherwise it would parse as detached top-level blocks).
+            const body = [];
+            while (this.pos < this.lines.length) {
+                const rawLine = this.lines[this.pos];
+                if (rawLine.trim() === '') { this.pos++; continue; }
+                const lvl = this.indentOf(rawLine);
+                if (lvl <= baseIndent) break;
+                const stmt = this.parseStatement(baseIndent + 1);
+                if (!stmt) continue;
+                if (stmt.__comment !== undefined) {
+                    if (body.length) body[body.length - 1].comment = stmt.__comment;
+                    else block.comment = block.comment || stmt.__comment;
+                    continue;
+                }
+                body.push(stmt);
+            }
+            this.paramStack.pop();
+            block.body = body;
             return block;
         }
         // Procedure call (identified by trailing ::custom).
@@ -458,7 +556,12 @@ class Parser {
             const lvl = this.indentOf(rawLine);
             if (lvl <= baseIndent) break;
             const stmt = this.parseStatement(baseIndent + 1);
-            if (stmt) blocks.push(stmt);
+            if (!stmt) continue;
+            if (stmt.__comment !== undefined) {
+                if (blocks.length) blocks[blocks.length - 1].comment = stmt.__comment;
+                continue;
+            }
+            blocks.push(stmt);
         }
         block.inputtables = block.inputtables || {};
         block.inputtables[key] = new Stack(blocks);
@@ -473,7 +576,12 @@ class Parser {
             if (lvl < baseIndent) break;
             if (lvl > baseIndent) break;
             const stmt = this.parseStatement(baseIndent);
-            if (stmt) blocks.push(stmt);
+            if (!stmt) continue;
+            if (stmt.__comment !== undefined) {
+                if (blocks.length) blocks[blocks.length - 1].comment = stmt.__comment;
+                continue;
+            }
+            blocks.push(stmt);
         }
         return blocks;
     }
@@ -497,13 +605,50 @@ class Parser {
     }
 
     parse() {
-        const scripts = [];
+        // In scratchblocks, indentation only nests C/E substacks; a hat's body
+        // (and any other `next` continuation) sits at the SAME indent as the hat.
+        // So we first collect the whole flat top-level stack in order (each
+        // top-level statement is parsed on its own; C/E blocks and `define`
+        // consume their indented bodies internally), then split it into scripts
+        // at every hat / `define` / floating reporter.
+        const top = [];
         while (this.pos < this.lines.length) {
             const line = this.nextNonBlank();
             if (line === null) break;
             const base = this.indentOf(line);
-            const stack = this.parseStack(base);
-            if (stack.length) scripts.push(stack);
+            if (base > 0) {
+                // A stray indented line with no enclosing block: skip it.
+                this.pos++;
+                continue;
+            }
+            const stmt = this.parseStatement(0);
+            if (!stmt) continue;
+            top.push(stmt);
+        }
+        const scripts = [];
+        let current = null;
+        // A `define` consumes its body internally, so it cannot have a trailing
+        // top-level continuation; the next statement must start a fresh script.
+        let currentClosed = false;
+        for (const conn of top) {
+            if (conn.__comment !== undefined) {
+                if (current) {
+                    const lb = current[current.length - 1];
+                    if (lb) lb.comment = conn.__comment;
+                }
+                continue;
+            }
+            const info = (conn.opcode && allBlocks[conn.opcode]) || {};
+            const isHat = (conn.opcode && conn.opcode.startsWith('event_')) || info.isHat;
+            const isReporter = info.type === REPORTER_BLOCK || info.type === BOOLEAN_BLOCK;
+            const isStarter = conn instanceof Definition || isHat || isReporter;
+            if (!current || currentClosed || isStarter) {
+                current = [conn];
+                scripts.push(current);
+                currentClosed = conn instanceof Definition;
+            } else {
+                current.push(conn);
+            }
         }
         return scripts;
     }
